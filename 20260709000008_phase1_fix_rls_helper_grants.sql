@@ -1,0 +1,42 @@
+-- =============================================================================
+-- Migration: CRITICAL FIX — restore RLS helper function execute grants
+--
+-- 20260709000005 revoked EXECUTE on user_org_ids() and user_role_in_org()
+-- from public/anon/authenticated, intending to close them off as public
+-- RPC endpoints (a real finding — see that migration's rationale).
+--
+-- This was wrong for these two specific functions: they are called
+-- *from inside* RLS policy USING/WITH CHECK expressions on nearly every
+-- table in the schema. SECURITY DEFINER controls whose privileges the
+-- function BODY runs with — it does NOT waive the requirement that the
+-- calling role have EXECUTE on the function to invoke it at all. Revoking
+-- EXECUTE broke RLS entirely: any query against organizations,
+-- organization_members, teams, role_permissions, invitations,
+-- subscriptions, etc. as the authenticated (or anon) role now fails with
+-- "permission denied for function user_org_ids" instead of evaluating
+-- normally.
+--
+-- Caught immediately via a real functional test against the deployed
+-- instance (`set role anon; select ... from organizations;`) — exactly
+-- the kind of bug that looks correct in isolated review (the earlier
+-- security-advisor pass) but only shows up when actually exercised.
+--
+-- handle_new_user() and log_audit_event() are UNAFFECTED by this
+-- correction and remain revoked: both are only ever invoked via trigger
+-- (AFTER INSERT/UPDATE/DELETE, and the auth.users trigger respectively),
+-- and triggers execute without requiring the firing role to hold EXECUTE
+-- on the trigger function — they were never actually reachable via RLS
+-- or direct call in the first place, so revoking them was correct and
+-- safe.
+-- =============================================================================
+
+grant execute on function user_org_ids() to authenticated, anon;
+grant execute on function user_role_in_org(uuid) to authenticated, anon;
+
+-- Granting to anon (not just authenticated) is deliberate, not an
+-- oversight: both functions key off auth.uid(), which is null for an
+-- unauthenticated request, so they simply return an empty set/null for
+-- anon — harmless — and this is what lets an anon query against, say,
+-- organizations return zero rows gracefully instead of erroring with a
+-- permission-denied exception (which is worse UX and arguably leaks more
+-- about internal structure than a clean empty result does).

@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+env:
+  NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.STAGING_SUPABASE_ANON_KEY }}
+
+jobs:
+  lint-typecheck-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # needed for migration diff check below
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.1.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Migration diff check
+        run: pnpm db:diff-check
+
+  # Runs only on merge to main — applies migrations to production BEFORE
+  # the Vercel production deployment goes live (ordering guarantee from
+  # Deployment_Architecture.md, Section 3).
+  migrate-production:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: lint-typecheck-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Apply migrations to production
+        run: supabase db push --db-url "${{ secrets.PRODUCTION_DB_URL }}"
+
+      - name: Regenerate types against production schema
+        run: |
+          supabase gen types typescript --project-id "${{ secrets.PRODUCTION_PROJECT_ID }}" --schema public > packages/types/database.types.ts
+
+      - name: Commit regenerated types if changed
+        run: |
+          git config user.name "automated-ke-ci"
+          git config user.email "ci@automatedke.africa"
+          git diff --quiet packages/types/database.types.ts || (git add packages/types/database.types.ts && git commit -m "chore: regenerate database types [skip ci]" && git push)
