@@ -1,0 +1,39 @@
+{
+  "name": "automated-ke",
+  "private": true,
+  "version": "0.1.0",
+  "engines": {
+    "node": ">=20.11.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.1.0",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\" --cache",
+    "format:check": "prettier --check \"**/*.{ts,tsx,md,json}\" --cache",
+    "db:types": "supabase gen types typescript --project-id $SUPABASE_PROJECT_ID --schema public > packages/types/database.types.ts",
+    "db:migrate:local": "supabase db reset",
+    "db:diff-check": "node scripts/check-migration-diff.js",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.6",
+    "prettier": "^3.3.2",
+    "husky": "^9.0.11",
+    "lint-staged": "^15.2.7",
+    "typescript": "^5.5.3"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{md,json}": [
+      "prettier --write"
+    ]
+  }
+}

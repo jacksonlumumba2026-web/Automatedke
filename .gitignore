@@ -1,0 +1,30 @@
+# dependencies
+node_modules
+.pnpm-store
+
+# build outputs
+.next
+dist
+out
+.turbo
+
+# env
+.env
+.env.local
+.env.*.local
+
+# supabase local
+supabase/.branches
+supabase/.temp
+
+# editor/os
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+
+# testing
+coverage
+
+# logs
+*.log
+npm-debug.log*
